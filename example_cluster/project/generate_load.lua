@@ -160,6 +160,76 @@ local function generate_operations_load(name, instance)
     end
 end
 
+local SELECT_MAP_REDUCE = 'SELECT_MAP_REDUCE'
+local crud_index = 1
+
+local function crud_operations(instance, operation, count)
+    if count <= 0 then
+        return
+    end
+
+    local space_name = 'customers'
+
+    if operation == SELECT then
+        for _ = 1, count do
+            local _, err = instance.net_box:call('crud.select', {
+                space_name, {{ '==', 'id', crud_index}}
+            })
+
+            if err ~= nil then
+                log.error(err)
+            end
+        end
+
+    elseif operation == SELECT_MAP_REDUCE then
+        for _ = 1, count do
+            local _, err = instance.net_box:call('crud.select', {
+                space_name, {
+                    { '<=', 'id', crud_index },
+                    { '==', 'age', 25 },
+                }, { first = 10 }
+            })
+
+            if err ~= nil then
+                log.error(err)
+            end
+        end
+
+    elseif operation == INSERT then
+        for _ = 1, count do
+            local _, err = instance.net_box:call('crud.insert', {
+                space_name, {
+                    crud_index,
+                    box.NULL,
+                    random_string(8),
+                    math.random(20, 30),
+                },
+            })
+            crud_index = crud_index + 1
+
+            if err ~= nil then
+                log.error(err)
+            end
+        end
+    end
+end
+
+local function generate_crud_load(name, instance)
+    local space_load = {}
+
+    if name:match('router') ~= nil then
+        space_load[SELECT_MAP_REDUCE] = math.random(1, 2)
+        space_load[SELECT] = math.random(3, 5)
+        space_load[INSERT] = math.random(5, 10)
+    else
+        return
+    end
+
+    for operation, count in pairs(space_load) do
+        crud_operations(instance, operation, count)
+    end
+end
+
 local f = fio.open('instances.yml')
 local instances = yaml.decode(f:read())
 f:close()
@@ -184,7 +254,8 @@ for _, instance in pairs(instances) do
     pcall(instance.net_box.eval, instance.net_box, 'return box.space.MY_SPACE:truncate()')
 end
 
-local load_generators = { generate_http_load, generate_space_load, generate_operations_load }
+-- local load_generators = { generate_http_load, generate_space_load, generate_operations_load }
+local load_generators = { generate_crud_load }
 
 while true do
     for name, instance in pairs(instances) do
